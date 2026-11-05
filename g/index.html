@@ -90,8 +90,15 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
     <button type="button" class="add-song" id="addSong">＋ הוספת שיר</button>
     <p class="amber" id="songCount" aria-live="polite">0 שירים 🎵</p>
 
-    <label class="fl" for="fTime">מתי נוח לכם? (רשות)</label>
-    <textarea class="ta" id="fTime" rows="2" maxlength="300" dir="auto" placeholder="יום ושעה בערך, ונמצא יחד מועד"></textarea>
+    <label class="fl" for="fDate">תאריך מבוקש לשיעור</label>
+    <input class="ta" id="fDate" type="date" required>
+    <p class="err hide" id="dateErr">בחרו תאריך מהיום והלאה</p>
+
+    <label class="fl" for="fClock">שעה מועדפת</label>
+    <input class="ta" id="fClock" type="time" value="18:00">
+
+    <label class="fl" for="fTime">הערה למועד (רשות)</label>
+    <textarea class="ta" id="fTime" rows="2" maxlength="300" dir="auto" placeholder="למשל: גמישים בשעות הערב / עדיף אחרי 17:00"></textarea>
 
     <button class="btn" id="sendBtn" type="button" disabled>שליחה לעמית בוואטסאפ</button>
     <p class="hint">נפתחת הודעה מוכנה עם כל הפרטים והשירים — נשאר ללחוץ שליחה</p>
@@ -118,9 +125,9 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
   <h2>איך זה עובד</h2>
   <div class="card">
     <ol class="steps">
-      <li><span>ממלאים פרטים ושירים ושולחים בוואטסאפ</span></li>
+      <li><span>ממלאים פרטים, תאריך ושירים ושולחים בוואטסאפ</span></li>
       <li><span>מקבלים שובר מוכן למסירה</span></li>
-      <li><span>מתאמים יחד מועד באולפן</span></li>
+      <li><span>בוחרים תאריך ושעה בהרשמה, ועמית מאשר</span></li>
     </ol>
   </div>
 
@@ -145,7 +152,16 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
   var addBtn = document.getElementById('addSong');
   var sendBtn = document.getElementById('sendBtn');
   var phoneErr = document.getElementById('phoneErr');
+  var dateErr = document.getElementById('dateErr');
   var formErr = document.getElementById('formErr');
+  var dateEl = document.getElementById('fDate');
+  (function setMinDate() {
+    var t = new Date();
+    var y = t.getFullYear();
+    var m = String(t.getMonth() + 1).padStart(2, '0');
+    var d = String(t.getDate()).padStart(2, '0');
+    dateEl.min = y + '-' + m + '-' + d;
+  })();
   var nSongs = 0;
 
   function addSongRow() {
@@ -205,12 +221,17 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
     var a = document.getElementById('fA').value.trim();
     var b = document.getElementById('fB').value.trim();
     var ph = document.getElementById('fPhone').value.trim();
+    var dt = dateEl.value;
     var okPhone = !ph || phoneOk(ph);
+    var okDate = !!dt && dt >= dateEl.min;
     phoneErr.classList.toggle('hide', okPhone);
-    sendBtn.disabled = !(a && b && phoneOk(ph) && n >= 1);
+    dateErr.classList.toggle('hide', !dt || okDate);
+    sendBtn.disabled = !(a && b && phoneOk(ph) && okDate && n >= 1);
   }
-  ['fA', 'fB', 'fFrom', 'fPhone', 'fTime'].forEach(function (id) {
-    document.getElementById(id).addEventListener('input', sync);
+  ['fA', 'fB', 'fFrom', 'fPhone', 'fDate', 'fClock', 'fTime'].forEach(function (id) {
+    var el = document.getElementById(id);
+    el.addEventListener('input', sync);
+    el.addEventListener('change', sync);
   });
 
   sendBtn.addEventListener('click', function () {
@@ -219,11 +240,21 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
     var b = document.getElementById('fB').value.trim();
     var from = document.getElementById('fFrom').value.trim();
     var ph = document.getElementById('fPhone').value.trim();
+    var clock = document.getElementById('fClock').value;
     var time = document.getElementById('fTime').value.trim();
+    var dt = dateEl.value;
     var list = songs();
     if (!a || !b) { formErr.textContent = 'מלאו את שני שמות המשתתפים'; return; }
     if (!phoneOk(ph)) { formErr.textContent = 'מלאו מספר נייד ישראלי תקין'; phoneErr.classList.remove('hide'); return; }
+    if (!dt || dt < dateEl.min) { formErr.textContent = 'בחרו תאריך לשיעור'; dateErr.classList.remove('hide'); return; }
     if (!list.length) { formErr.textContent = 'כתבו לפחות שיר אחד 🙂'; return; }
+
+    function heDate(iso) {
+      var p = iso.split('-');
+      var days = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+      var dd = new Date(+p[0], +p[1] - 1, +p[2]);
+      return 'יום ' + days[dd.getDay()] + ' ' + p[2] + '.' + p[1] + '.' + p[0];
+    }
 
     var lines = [
       'היי עמית, הרשמה לשיעור תופים זוגי במתנה 🥁',
@@ -233,7 +264,8 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
     ];
     if (from) lines.push('מעניק/ה: ' + from);
     lines.push('טלפון: ' + dispPhone(ph));
-    if (time) lines.push('מתי נוח: ' + time);
+    lines.push('תאריך מבוקש: ' + heDate(dt) + (clock ? (' בשעה ' + clock) : ''));
+    if (time) lines.push('הערה למועד: ' + time);
     lines.push('', 'השירים שאנחנו אוהבים 🎵:');
     list.forEach(function (s, i) { lines.push((i + 1) + '. ' + s); });
 
