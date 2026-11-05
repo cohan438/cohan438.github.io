@@ -54,6 +54,11 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
 .err{color:#ff8a7a;font-size:13px;margin-top:6px}
 .hide{display:none!important}
 #songCount{margin-top:10px;font-size:14px}
+.slotsbox{margin-top:8px}
+.wkhead{margin:12px 0 4px;font-size:15px;font-weight:800;color:#E8A838}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}
+.chip{border:1.5px solid #3D3226;background:#1A1510;color:#F5F0E6;border-radius:999px;padding:10px 14px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;min-height:44px}
+.chip.on{border-color:#E8A838;background:#3A2B17;color:#E8A838}
 .add-song{margin-top:8px;font:inherit;font-weight:700;font-size:14px;color:#E8A838;background:transparent;border:1px dashed #E8A838;border-radius:12px;padding:10px 12px;width:100%;cursor:pointer}
 </style>
 </head>
@@ -89,16 +94,14 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
     <div id="songInputs"></div>
     <button type="button" class="add-song" id="addSong">＋ הוספת שיר</button>
     <p class="amber" id="songCount" aria-live="polite">0 שירים 🎵</p>
-
-    <label class="fl" for="fDate">תאריך מבוקש לשיעור</label>
-    <input class="ta" id="fDate" type="date" required>
-    <p class="err hide" id="dateErr">בחרו תאריך מהיום והלאה</p>
-
-    <label class="fl" for="fClock">שעה מועדפת</label>
-    <input class="ta" id="fClock" type="time" value="18:00">
-
-    <label class="fl" for="fTime">הערה למועד (רשות)</label>
-    <textarea class="ta" id="fTime" rows="2" maxlength="300" dir="auto" placeholder="למשל: גמישים בשעות הערב / עדיף אחרי 17:00"></textarea>
+<div class="slotsbox" id="slotsBox">
+    <h3 style="margin:14px 0 4px;font-size:17px">🗓️ מתי נוח לכם?</h3>
+    <p class="muted" id="slotHint" style="font-size:14px">אפשר לבחור עד 3 אפשרויות (רשות)</p>
+    <div id="slotList" aria-live="polite"><p class="muted" id="slotLoading">טוענים מועדים פנויים… ⏳</p></div>
+    <label class="fl" for="fTime">אף אחד לא מתאים? כתבו מה נוח לכם</label>
+    <textarea class="ta" id="fTime" rows="2" maxlength="300" dir="auto" placeholder="למשל: שני אחרי 17:00"></textarea>
+    <p class="muted" style="font-size:13px;margin-top:6px">עמית יחזור אליכם לאשר מועד 😊</p>
+  </div>
 
     <button class="btn" id="sendBtn" type="button" disabled>שליחה לעמית בוואטסאפ</button>
     <p class="hint">נפתחת הודעה מוכנה עם כל הפרטים והשירים — נשאר ללחוץ שליחה</p>
@@ -125,9 +128,9 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
   <h2>איך זה עובד</h2>
   <div class="card">
     <ol class="steps">
-      <li><span>ממלאים פרטים, תאריך ושירים ושולחים בוואטסאפ</span></li>
+      <li><span>ממלאים פרטים ושירים, בוחרים מועד מהיומן</span></li>
       <li><span>מקבלים שובר מוכן למסירה</span></li>
-      <li><span>בוחרים תאריך ושעה בהרשמה, ועמית מאשר</span></li>
+      <li><span>עמית מאשר את המועד בוואטסאפ</span></li>
     </ol>
   </div>
 
@@ -147,22 +150,15 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
 <script>
 (function () {
   var MAX = 12, START = 5, PH = 'הדביקו קישור או כתבו שם שיר';
+  var SLOTS_URL = 'https://script.google.com/macros/s/AKfycbxQSWJxW4BPARMf2fmjX1UlUbdSaLQjc3SczDjk5LcZaGrCTIznzDLD1oWGaMtAwoCEfA/exec';
   var box = document.getElementById('songInputs');
   var countEl = document.getElementById('songCount');
   var addBtn = document.getElementById('addSong');
   var sendBtn = document.getElementById('sendBtn');
   var phoneErr = document.getElementById('phoneErr');
-  var dateErr = document.getElementById('dateErr');
   var formErr = document.getElementById('formErr');
-  var dateEl = document.getElementById('fDate');
-  (function setMinDate() {
-    var t = new Date();
-    var y = t.getFullYear();
-    var m = String(t.getMonth() + 1).padStart(2, '0');
-    var d = String(t.getDate()).padStart(2, '0');
-    dateEl.min = y + '-' + m + '-' + d;
-  })();
   var nSongs = 0;
+  var picked = [], MAXP = 3;
 
   function addSongRow() {
     if (nSongs >= MAX) return;
@@ -202,18 +198,14 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
     if (d.indexOf('972') === 0) d = '0' + d.slice(3);
     return /^05\d{8}$/.test(d);
   }
-  function intlPhone(p) {
-    var d = digits(p);
-    if (d.indexOf('972') === 0) return d;
-    if (d.charAt(0) === '0') return '972' + d.slice(1);
-    return d;
-  }
   function dispPhone(p) {
     var d = digits(p);
     if (d.indexOf('972') === 0) d = '0' + d.slice(3);
     if (d.length === 10) return d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6);
     return p.trim();
   }
+  function pickedLabels() { return picked.map(function (b) { return b.getAttribute('data-label'); }); }
+
   function sync() {
     var list = songs();
     var n = list.length;
@@ -221,18 +213,81 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
     var a = document.getElementById('fA').value.trim();
     var b = document.getElementById('fB').value.trim();
     var ph = document.getElementById('fPhone').value.trim();
-    var dt = dateEl.value;
     var okPhone = !ph || phoneOk(ph);
-    var okDate = !!dt && dt >= dateEl.min;
     phoneErr.classList.toggle('hide', okPhone);
-    dateErr.classList.toggle('hide', !dt || okDate);
-    sendBtn.disabled = !(a && b && phoneOk(ph) && okDate && n >= 1);
+    sendBtn.disabled = !(a && b && phoneOk(ph) && n >= 1);
   }
-  ['fA', 'fB', 'fFrom', 'fPhone', 'fDate', 'fClock', 'fTime'].forEach(function (id) {
+  ['fA', 'fB', 'fFrom', 'fPhone', 'fTime'].forEach(function (id) {
     var el = document.getElementById(id);
+    if (!el) return;
     el.addEventListener('input', sync);
     el.addEventListener('change', sync);
   });
+
+  function slotsFail() {
+    document.getElementById('slotList').innerHTML = '<p class="muted">לא הצלחנו לטעון כרגע את המועדים. כתבו למטה מה נוח לכם 🙂</p>';
+  }
+  function renderSlots(r) {
+    var list = document.getElementById('slotList');
+    list.innerHTML = '';
+    if (!r || !r.ok) return slotsFail();
+    MAXP = r.maxPick || 3;
+    var any = false;
+    (r.weeks || []).forEach(function (w) {
+      if (!w.days || !w.days.length) return;
+      any = true;
+      var h = document.createElement('h4');
+      h.className = 'wkhead';
+      h.textContent = w.title;
+      list.appendChild(h);
+      w.days.forEach(function (d) {
+        var c = document.createElement('div');
+        c.className = 'chips';
+        (d.slots || []).forEach(function (s) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'chip';
+          b.setAttribute('aria-pressed', 'false');
+          b.setAttribute('data-label', s.label);
+          b.setAttribute('data-id', s.id);
+          var t = document.createElement('span');
+          t.textContent = d.label + ' · ';
+          var bt = document.createElement('b');
+          bt.dir = 'ltr';
+          bt.textContent = s.time;
+          b.appendChild(t);
+          b.appendChild(bt);
+          b.onclick = function () {
+            var i = picked.indexOf(b);
+            if (i >= 0) picked.splice(i, 1);
+            else {
+              if (picked.length >= MAXP) {
+                formErr.textContent = 'אפשר לבחור עד ' + MAXP + ' אפשרויות';
+                return;
+              }
+              picked.push(b);
+              formErr.textContent = '';
+            }
+            b.classList.toggle('on', picked.indexOf(b) >= 0);
+            b.setAttribute('aria-pressed', String(picked.indexOf(b) >= 0));
+            document.getElementById('slotHint').textContent = picked.length
+              ? ('נבחרו ' + picked.length + ' מתוך ' + MAXP)
+              : ('אפשר לבחור עד ' + MAXP + ' אפשרויות (רשות)');
+          };
+          c.appendChild(b);
+        });
+        list.appendChild(c);
+      });
+    });
+    if (!any) list.innerHTML = '<p class="muted">כרגע אין מועדים פנויים בשבועיים הקרובים. כתבו למטה מה נוח לכם 🙂</p>';
+  }
+  window.__acdGiftSlots = function (r) {
+    try { renderSlots(r); } catch (e) { slotsFail(); }
+  };
+  var s = document.createElement('script');
+  s.src = SLOTS_URL + '?slots=1&callback=__acdGiftSlots';
+  s.onerror = slotsFail;
+  document.head.appendChild(s);
 
   sendBtn.addEventListener('click', function () {
     formErr.textContent = '';
@@ -240,21 +295,11 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
     var b = document.getElementById('fB').value.trim();
     var from = document.getElementById('fFrom').value.trim();
     var ph = document.getElementById('fPhone').value.trim();
-    var clock = document.getElementById('fClock').value;
     var time = document.getElementById('fTime').value.trim();
-    var dt = dateEl.value;
     var list = songs();
     if (!a || !b) { formErr.textContent = 'מלאו את שני שמות המשתתפים'; return; }
     if (!phoneOk(ph)) { formErr.textContent = 'מלאו מספר נייד ישראלי תקין'; phoneErr.classList.remove('hide'); return; }
-    if (!dt || dt < dateEl.min) { formErr.textContent = 'בחרו תאריך לשיעור'; dateErr.classList.remove('hide'); return; }
     if (!list.length) { formErr.textContent = 'כתבו לפחות שיר אחד 🙂'; return; }
-
-    function heDate(iso) {
-      var p = iso.split('-');
-      var days = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
-      var dd = new Date(+p[0], +p[1] - 1, +p[2]);
-      return 'יום ' + days[dd.getDay()] + ' ' + p[2] + '.' + p[1] + '.' + p[0];
-    }
 
     var lines = [
       'היי עמית, הרשמה לשיעור תופים זוגי במתנה 🥁',
@@ -264,10 +309,14 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
     ];
     if (from) lines.push('מעניק/ה: ' + from);
     lines.push('טלפון: ' + dispPhone(ph));
-    lines.push('תאריך מבוקש: ' + heDate(dt) + (clock ? (' בשעה ' + clock) : ''));
-    if (time) lines.push('הערה למועד: ' + time);
+    var sl = pickedLabels();
+    if (sl.length) {
+      lines.push('', 'מועדים שנוחים לנו 🗓️:');
+      sl.forEach(function (x) { lines.push('• ' + x); });
+    }
+    if (time) lines.push('לגבי זמנים: ' + time);
     lines.push('', 'השירים שאנחנו אוהבים 🎵:');
-    list.forEach(function (s, i) { lines.push((i + 1) + '. ' + s); });
+    list.forEach(function (song, i) { lines.push((i + 1) + '. ' + song); });
 
     var url = 'https://wa.me/972528983272?text=' + encodeURIComponent(lines.join('\n'));
     document.getElementById('waAgain').href = url;
@@ -277,6 +326,7 @@ textarea.ta{height:auto;min-height:72px;padding:12px 14px;resize:vertical}
   });
   sync();
 })();
+
 </script>
 </body>
 </html>
